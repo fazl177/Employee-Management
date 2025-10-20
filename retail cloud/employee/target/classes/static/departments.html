@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Departments</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1>Departments</h1>
+    <a href="/" class="btn btn-secondary">Dashboard</a>
+  </div>
+
+  <div class="mb-3">
+    <button id="refreshBtn" class="btn btn-outline-primary">Refresh</button>
+    <button id="newBtn" class="btn btn-primary">Add Department</button>
+  </div>
+
+  <div id="listArea"></div>
+
+  <!-- Modal for create/edit -->
+  <div class="modal fade" id="deptModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Department</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form id="deptForm">
+            <input type="hidden" id="deptId">
+            <div class="row">
+              <div class="col-md-6 mb-2"><label>Name</label><input id="name" class="form-control" required></div>
+              <div class="col-md-6 mb-2"><label>Creation Date</label><input id="creationDate" type="date" class="form-control" required></div>
+              <div class="col-md-12 mb-2"><label>Head (employee)</label>
+                <select id="headEmployeeId" class="form-select"><option value="">(none)</option></select>
+              </div>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button id="saveBtn" class="btn btn-primary">Save</button>
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+const apiBase = '/api';
+let deptModal;
+let headMap = {}; // map employeeId -> name
+
+async function loadEmployeesForHead() {
+  const res = await fetch(`${apiBase}/employees?lookup=true&page=0&size=100`);
+  const data = await res.json();
+  const list = data.content || [];
+  const sel = document.getElementById('headEmployeeId');
+  sel.innerHTML = '<option value="">(none)</option>';
+  headMap = {};
+  list.forEach(e => {
+    headMap[e.id] = e.name;
+    const opt = document.createElement('option'); opt.value = e.id; opt.text = e.name; sel.appendChild(opt);
+  });
+}
+
+async function loadDepartments() {
+  // request expanded departments so the server returns the employees list for counts
+  const res = await fetch(`${apiBase}/departments?page=0&size=100&expand=employees`);
+  const data = await res.json();
+  const container = document.getElementById('listArea');
+  container.innerHTML = '';
+  const table = document.createElement('table');
+  table.className = 'table table-striped';
+  const thead = document.createElement('thead');
+  thead.innerHTML = '<tr><th>ID</th><th>Name</th><th>Head</th><th>Employees</th><th>Actions</th></tr>';
+  table.appendChild(thead);
+  const tbody = document.createElement('tbody');
+  (data.content||[]).forEach(d => {
+    const tr = document.createElement('tr');
+    const headName = d.headEmployeeId ? (headMap[d.headEmployeeId] || d.headEmployeeId) : '';
+    tr.innerHTML = `<td>${d.id}</td><td>${d.name}</td><td>${headName}</td><td>${(d.employees ? d.employees.length : 0)}</td>
+      <td>
+        <button class='btn btn-sm btn-primary' onclick='edit(${d.id})'>Edit</button>
+        <button class='btn btn-sm btn-danger' onclick='del(${d.id})'>Delete</button>
+        <button class='btn btn-sm btn-info' onclick='view(${d.id})'>View Employees</button>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  container.appendChild(table);
+}
+
+function openModal() {
+  deptModal = new bootstrap.Modal(document.getElementById('deptModal'));
+  deptModal.show();
+}
+
+async function edit(id) {
+  const res = await fetch(`${apiBase}/departments/${id}`);
+  if (!res.ok) return alert('Not found');
+  const d = await res.json();
+  document.getElementById('deptId').value = d.id || '';
+  document.getElementById('name').value = d.name || '';
+  document.getElementById('creationDate').value = d.creationDate || '';
+  document.getElementById('headEmployeeId').value = d.headEmployeeId || '';
+  openModal();
+}
+
+async function del(id) {
+  if (!confirm('Delete department? This will fail if employees exist.')) return;
+  const res = await fetch(`${apiBase}/departments/${id}`, { method: 'DELETE' });
+  if (res.status===204) { loadDepartments(); } else { const txt = await res.text(); alert('Delete failed: ' + txt); }
+}
+
+async function view(id) {
+  const res = await fetch(`${apiBase}/departments/${id}?expand=employees`);
+  if (!res.ok) return alert('Not found');
+  const d = await res.json();
+  const employees = d.employees || [];
+  alert(`Employees in ${d.name}:\n` + employees.map(e => `${e.id}: ${e.name}`).join('\n'));
+}
+
+async function save() {
+  const id = document.getElementById('deptId').value;
+  const payload = {
+    name: document.getElementById('name').value,
+    creationDate: document.getElementById('creationDate').value,
+    headEmployeeId: document.getElementById('headEmployeeId').value || null
+  };
+  let res;
+  if (id) {
+    res = await fetch(`${apiBase}/departments/${id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  } else {
+    res = await fetch(`${apiBase}/departments`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  }
+  if (res.ok) { deptModal.hide(); loadDepartments(); } else { const txt=await res.text(); alert('Save failed: ' + txt); }
+}
+
+document.getElementById('refreshBtn').addEventListener('click', async () => { await loadEmployeesForHead(); await loadDepartments(); });
+document.getElementById('newBtn').addEventListener('click', async () => { document.getElementById('deptForm').reset(); document.getElementById('deptId').value=''; await loadEmployeesForHead(); openModal(); });
+// initial load
+(async ()=>{ await loadEmployeesForHead(); await loadDepartments(); })();
+</script>
+</body>
+</html>

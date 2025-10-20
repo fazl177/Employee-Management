@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Employees - EmployeeMgmt</title>
+  <link href="/css/styles.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="/">EmployeeMgmt</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navmenu">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navmenu">
+      <ul class="navbar-nav ms-auto">
+        <li class="nav-item"><a class="nav-link" href="/employees.html">Employees</a></li>
+        <li class="nav-item"><a class="nav-link" href="/departments.html">Departments</a></li>
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<main class="container py-4">
+  <div id="alertArea"></div>
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">Employees</h2>
+    <div class="d-flex gap-2">
+      <input id="searchInput" type="search" class="form-control form-control-sm" placeholder="Search by name..." style="min-width:220px">
+      <button id="refreshBtn" class="btn btn-outline-secondary btn-sm">Refresh</button>
+      <button id="newBtn" class="btn btn-primary btn-sm">New Employee</button>
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-body">
+      <div class="table-responsive">
+        <table id="employeesTable" class="table table-hover table-striped mb-0">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>Role</th>
+              <th>Department</th>
+              <th>Manager</th>
+              <th class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="d-flex justify-content-between align-items-center mt-3">
+        <div class="small-muted">Showing <span id="showingCount">0</span></div>
+        <div class="d-flex gap-2 align-items-center">
+          <button id="prevPage" class="btn btn-sm btn-outline-secondary">Prev</button>
+          <span id="pageInfo" class="small-muted">Page 0 / 0</span>
+          <button id="nextPage" class="btn btn-sm btn-outline-secondary">Next</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal for create/edit -->
+  <div class="modal fade" id="employeeModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Employee</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form id="employeeForm">
+            <input type="hidden" id="empId">
+            <div class="row g-2">
+              <div class="col-md-6"><label>Name</label><input id="name" class="form-control" required></div>
+              <div class="col-md-3"><label>DOB</label><input id="dob" type="date" class="form-control" required></div>
+              <div class="col-md-3"><label>Salary</label><input id="salary" type="number" step="0.01" class="form-control" required></div>
+              <div class="col-md-6"><label>Role</label><input id="roleTitle" class="form-control" required></div>
+              <div class="col-md-3"><label>Joining Date</label><input id="joiningDate" type="date" class="form-control" required></div>
+              <div class="col-md-3"><label>Yearly Bonus %</label><input id="yearlyBonusPercentage" type="number" step="0.1" class="form-control" required></div>
+              <div class="col-12"><label>Address</label><input id="address" class="form-control" required></div>
+              <div class="col-md-6"><label>Department</label>
+                <select id="departmentId" class="form-select" required></select>
+              </div>
+              <div class="col-md-6"><label>Manager</label>
+                <select id="managerId" class="form-select"><option value="">(none)</option></select>
+              </div>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button id="saveBtn" class="btn btn-primary">Save</button>
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</main>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/js/common.js"></script>
+<script>
+// improved employees page script using modular helpers
+let currentPage = 0; let totalPages = 0; const pageSize = 20;
+let employeeModal;
+let deptMap = {};
+let managerMap = {};
+
+async function loadDepartments() {
+  const res = await fetch(`/api/departments?page=0&size=100`);
+  const data = await res.json();
+  const sel = document.getElementById('departmentId'); sel.innerHTML = '';
+  deptMap = {};
+  (data.content||[]).forEach(d => { deptMap[d.id] = d.name; const opt=document.createElement('option'); opt.value=d.id; opt.text=d.name; sel.appendChild(opt); });
+}
+
+async function loadManagers() {
+  const res = await fetch(`/api/employees?page=0&size=100&lookup=true`);
+  const data = await res.json();
+  const sel = document.getElementById('managerId'); sel.innerHTML = '<option value="">(none)</option>';
+  managerMap = {};
+  (data.content||[]).forEach(e => { managerMap[e.id] = e.name; const opt=document.createElement('option'); opt.value=e.id; opt.text=e.name; sel.appendChild(opt); });
+}
+
+async function loadEmployees(page = 0, query = '') {
+  try {
+    const q = query ? `&q=${encodeURIComponent(query)}` : '';
+    const res = await fetch(`/api/employees?page=${page}&size=${pageSize}${q}`);
+    if (!res.ok) return showAlert('Failed to load employees', 'danger');
+    const data = await res.json();
+    const tbody = document.querySelector('#employeesTable tbody'); tbody.innerHTML = '';
+    (data.content||[]).forEach(e => {
+      const tr = document.createElement('tr');
+      const deptName = e.departmentId ? (deptMap[e.departmentId] || e.departmentId) : '';
+      const mgrName = e.managerId ? (managerMap[e.managerId] || e.managerId) : '';
+      tr.innerHTML = `<td>${e.id}</td><td>${e.name}</td><td>${e.roleTitle||''}</td><td>${deptName}</td><td>${mgrName}</td>
+        <td class="text-end">
+          <button class='btn btn-sm btn-primary me-1' onclick='edit(${e.id})'>Edit</button>
+          <button class='btn btn-sm btn-danger' onclick='del(${e.id})'>Delete</button>
+        </td>`;
+      tbody.appendChild(tr);
+    });
+    document.getElementById('showingCount').innerText = data.totalElements || 0;
+    currentPage = data.currentPage || data.number || page;
+    totalPages = data.totalPages || data.totalPages || 0;
+    document.getElementById('pageInfo').innerText = `Page ${currentPage + 1} / ${totalPages}`;
+  } catch (err) { console.error(err); showAlert('Error loading employees','danger'); }
+}
+
+function openModal() { employeeModal = new bootstrap.Modal(document.getElementById('employeeModal')); employeeModal.show(); }
+
+async function edit(id) {
+  const res = await fetch(`/api/employees/${id}`);
+  if (!res.ok) return showAlert('Employee not found', 'warning');
+  const e = await res.json();
+  document.getElementById('empId').value = e.id || '';
+  document.getElementById('name').value = e.name || '';
+  document.getElementById('dob').value = e.dob || '';
+  document.getElementById('salary').value = e.salary || '';
+  document.getElementById('address').value = e.address || '';
+  document.getElementById('roleTitle').value = e.roleTitle || '';
+  document.getElementById('joiningDate').value = e.joiningDate || '';
+  document.getElementById('yearlyBonusPercentage').value = e.yearlyBonusPercentage || '';
+  document.getElementById('departmentId').value = e.departmentId || '';
+  document.getElementById('managerId').value = e.managerId || '';
+  openModal();
+}
+
+async function del(id) {
+  if (!confirm('Delete employee?')) return;
+  const res = await fetch(`/api/employees/${id}`, { method: 'DELETE' });
+  if (res.status===204) { showAlert('Employee deleted', 'success'); loadEmployees(currentPage); } else { const txt = await res.text(); showAlert('Delete failed: '+txt, 'danger'); }
+}
+
+async function save() {
+  const id = document.getElementById('empId').value;
+  const payload = {
+    name: document.getElementById('name').value,
+    dob: document.getElementById('dob').value,
+    salary: parseFloat(document.getElementById('salary').value),
+    address: document.getElementById('address').value,
+    roleTitle: document.getElementById('roleTitle').value,
+    joiningDate: document.getElementById('joiningDate').value,
+    yearlyBonusPercentage: parseFloat(document.getElementById('yearlyBonusPercentage').value),
+    managerId: document.getElementById('managerId').value || null,
+    departmentId: parseInt(document.getElementById('departmentId').value)
+  };
+  let res;
+  if (id) {
+    res = await fetch(`/api/employees/${id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  } else {
+    res = await fetch(`/api/employees`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  }
+  if (res.ok) { employeeModal.hide(); showAlert('Saved successfully','success'); loadEmployees(currentPage); } else { const txt = await res.text(); showAlert('Save failed: '+txt,'danger'); }
+}
+
+// pagination handlers
+document.getElementById('prevPage').addEventListener('click', () => { if (currentPage>0) { loadEmployees(currentPage-1, document.getElementById('searchInput').value); } });
+document.getElementById('nextPage').addEventListener('click', () => { if (currentPage < totalPages-1) { loadEmployees(currentPage+1, document.getElementById('searchInput').value); } });
+
+// UI bindings
+document.getElementById('refreshBtn').addEventListener('click', async () => { await loadDepartments(); await loadManagers(); await loadEmployees(0); });
+document.getElementById('newBtn').addEventListener('click', async () => { document.getElementById('employeeForm').reset(); document.getElementById('empId').value=''; await loadDepartments(); await loadManagers(); openModal(); });
+document.getElementById('saveBtn').addEventListener('click', save);
+document.getElementById('searchInput').addEventListener('input', (e) => { loadEmployees(0, e.target.value); });
+
+// initial load - ensure departments and managers loaded first so we can render names
+(async ()=>{ await loadDepartments(); await loadManagers(); await loadEmployees(0); })();
+</script>
+</body>
+</html>

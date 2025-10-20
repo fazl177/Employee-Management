@@ -1,0 +1,27 @@
+/* Simple, clean styles for the Employee Management UI */
+:root{
+  --brand:#0d6efd;
+  --muted:#6c757d;
+  --card-bg:#ffffff;
+  --bg:#f8f9fa;
+}
+body{
+  background:var(--bg);
+  color:#212529;
+  font-family:Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+.navbar-brand{font-weight:600}
+.container .card{border:0;border-radius:10px}
+.card .card-body{padding:1.25rem}
+.table thead th{border-bottom:2px solid rgba(0,0,0,0.05)}
+.table tbody tr:hover{background:rgba(13,110,253,0.03)}
+.btn-primary{background:var(--brand);border-color:var(--brand)}
+.page-actions{display:flex;gap:.5rem;align-items:center}
+.small-muted{color:var(--muted);font-size:.9rem}
+.flex-gap{display:flex;gap:0.5rem;align-items:center}
+.footer-small{font-size:0.9rem;color:var(--muted);margin-top:2rem}
+/* modal tweaks */
+.modal .modal-content{border-radius:10px}
+@media (max-width:576px){
+  .flex-gap{flex-direction:column;align-items:stretch}
+}
