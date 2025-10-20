@@ -1,0 +1,636 @@
+
+1) JSON Schemas (request/response)
+
+Brief: request and response JSON schemas for Employee and Department APIs.
+
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "EmployeeCreateRequest": {
+    "type": "object",
+    "required": ["firstName","lastName","email","departmentId"],
+    "properties": {
+      "firstName": {"type":"string"},
+      "lastName": {"type":"string"},
+      "email": {"type":"string","format":"email"},
+      "title": {"type":"string"},
+      "salary": {"type":"number"},
+      "hireDate": {"type":"string","format":"date"},
+      "managerId": {"type":["integer","null"]},
+      "departmentId": {"type":"integer"}
+    }
+  },
+  "EmployeeResponse": {
+    "type":"object",
+    "properties": {
+      "id":{"type":"integer"},
+      "firstName":{"type":"string"},
+      "lastName":{"type":"string"},
+      "email":{"type":"string"},
+      "title":{"type":"string"},
+      "salary":{"type":"number"},
+      "hireDate":{"type":"string","format":"date"},
+      "managerId":{"type":["integer","null"]},
+      "departmentId":{"type":"integer"}
+    }
+  },
+  "DepartmentRequest": {
+    "type":"object",
+    "required":["name"],
+    "properties": {
+      "name":{"type":"string"},
+      "description":{"type":"string"}
+    }
+  },
+  "DepartmentResponse": {
+    "type":"object",
+    "properties": {
+      "id":{"type":"integer"},
+      "name":{"type":"string"},
+      "description":{"type":"string"},
+      "employeeCount":{"type":"integer"}
+    }
+  }
+}
+
+
+2) Database script
+
+Brief: SQL to create two tables: departments and employees with manager relationship
+
+-- db/create_tables.sql
+CREATE TABLE departments (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  name VARCHAR(150) NOT NULL,
+  description VARCHAR(500),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE employees (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  first_name VARCHAR(100) NOT NULL,
+  last_name VARCHAR(100) NOT NULL,
+  email VARCHAR(200) UNIQUE NOT NULL,
+  title VARCHAR(150),
+  salary DECIMAL(15,2),
+  hire_date DATE,
+  manager_id BIGINT,
+  department_id BIGINT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_emp_manager FOREIGN KEY (manager_id) REFERENCES employees(id) ON DELETE SET NULL,
+  CONSTRAINT fk_emp_dept FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE RESTRICT
+);
+
+3) JPA Entities
+
+Brief: Department entity
+
+// src/main/java/com/retailcloud/employee/entity/Department.java
+package com.retailcloud.employee.entity;
+
+import javax.persistence.*;
+import java.util.List;
+
+@Entity
+@Table(name = "departments")
+public class Department {
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    private String name;
+    private String description;
+
+    @OneToMany(mappedBy = "department")
+    private List<Employee> employees;
+
+    public Department() {}
+    public Department(String name, String description) { this.name = name; this.description = description; }
+
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
+    public String getDescription() { return description; }
+    public void setDescription(String description) { this.description = description; }
+    public List<Employee> getEmployees() { return employees; }
+    public void setEmployees(List<Employee> employees) { this.employees = employees; }
+}
+
+Brief: Employee entity
+
+// src/main/java/com/retailcloud/employee/entity/Employee.java
+package com.retailcloud.employee.entity;
+
+import javax.persistence.*;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+
+@Entity
+@Table(name = "employees")
+public class Employee {
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    private String firstName;
+    private String lastName;
+    @Column(unique = true, nullable = false)
+    private String email;
+    private String title;
+    private BigDecimal salary;
+    private LocalDate hireDate;
+
+    @ManyToOne
+    @JoinColumn(name = "manager_id")
+    private Employee manager;
+
+    @ManyToOne(optional = false)
+    @JoinColumn(name = "department_id")
+    private Department department;
+
+    public Employee() {}
+
+    // getters and setters
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+    public String getFirstName() { return firstName; }
+    public void setFirstName(String fn) { this.firstName = fn; }
+    public String getLastName() { return lastName; }
+    public void setLastName(String ln) { this.lastName = ln; }
+    public String getEmail() { return email; }
+    public void setEmail(String email) { this.email = email; }
+    public String getTitle() { return title; }
+    public void setTitle(String title) { this.title = title; }
+    public BigDecimal getSalary() { return salary; }
+    public void setSalary(BigDecimal salary) { this.salary = salary; }
+    public LocalDate getHireDate() { return hireDate; }
+    public void setHireDate(LocalDate hireDate) { this.hireDate = hireDate; }
+    public Employee getManager() { return manager; }
+    public void setManager(Employee manager) { this.manager = manager; }
+    public Department getDepartment() { return department; }
+    public void setDepartment(Department department) { this.department = department; }
+}
+
+4) Repositories
+
+Brief: DepartmentRepository.
+
+// src/main/java/com/retailcloud/employee/repository/DepartmentRepository.java
+package com.retailcloud.employee.repository;
+
+import com.retailcloud.employee.entity.Department;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface DepartmentRepository extends JpaRepository<Department, Long> {
+}
+
+Brief: EmployeeRepository.
+
+// src/main/java/com/retailcloud/employee/repository/EmployeeRepository.java
+package com.retailcloud.employee.repository;
+
+import com.retailcloud.employee.entity.Employee;
+import org.springframework.data.jpa.repository.JpaRepository;
+import java.util.List;
+
+public interface EmployeeRepository extends JpaRepository<Employee, Long> {
+    List<Employee> findByDepartmentId(Long departmentId);
+    List<Employee> findByManagerId(Long managerId);
+}
+
+5) DTOs
+
+Brief: EmployeeRequest DTO.
+
+// src/main/java/com/retailcloud/employee/dto/EmployeeRequest.java
+package com.retailcloud.employee.dto;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+
+public class EmployeeRequest {
+    public String firstName;
+    public String lastName;
+    public String email;
+    public String title;
+    public BigDecimal salary;
+    public LocalDate hireDate;
+    public Long managerId;
+    public Long departmentId;
+}
+
+Brief: EmployeeResponse DTO
+
+// src/main/java/com/retailcloud/employee/dto/EmployeeResponse.java
+package com.retailcloud.employee.dto;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+
+public class EmployeeResponse {
+    public Long id;
+    public String firstName;
+    public String lastName;
+    public String email;
+    public String title;
+    public BigDecimal salary;
+    public LocalDate hireDate;
+    public Long managerId;
+    public Long departmentId;
+}
+
+Brief: DepartmentRequest DTO.
+
+// src/main/java/com/retailcloud/employee/dto/DepartmentRequest.java
+package com.retailcloud.employee.dto;
+
+public class DepartmentRequest {
+    public String name;
+    public String description;
+}
+
+Brief: DepartmentResponse DTO.
+
+// src/main/java/com/retailcloud/employee/dto/DepartmentResponse.java
+package com.retailcloud.employee.dto;
+
+public class DepartmentResponse {
+    public Long id;
+    public String name;
+    public String description;
+    public Integer employeeCount;
+}
+
+6) Services (business logic + analytics)
+
+Brief: EmployeeService interface.
+
+// src/main/java/com/retailcloud/employee/service/EmployeeService.java
+package com.retailcloud.employee.service;
+
+import com.retailcloud.employee.dto.EmployeeRequest;
+import com.retailcloud.employee.dto.EmployeeResponse;
+import java.util.List;
+import java.util.Map;
+
+public interface EmployeeService {
+    EmployeeResponse create(EmployeeRequest req);
+    EmployeeResponse update(Long id, EmployeeRequest req);
+    EmployeeResponse getById(Long id);
+    void delete(Long id);
+    List<EmployeeResponse> listByDepartment(Long departmentId);
+    List<EmployeeResponse> getReportingChain(Long employeeId);
+    Map<String,Object> departmentAnalytics(Long departmentId);
+}
+
+Brief: EmployeeServiceImpl implementation (includes reporting chain and dept analytics).
+
+// src/main/java/com/retailcloud/employee/service/impl/EmployeeServiceImpl.java
+package com.retailcloud.employee.service.impl;
+
+import com.retailcloud.employee.dto.*;
+import com.retailcloud.employee.entity.*;
+import com.retailcloud.employee.repository.*;
+import com.retailcloud.employee.service.EmployeeService;
+import com.retailcloud.employee.exception.ResourceNotFoundException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import java.util.*;
+import java.math.BigDecimal;
+import java.util.stream.Collectors;
+
+@Service
+@Transactional
+public class EmployeeServiceImpl implements EmployeeService {
+    private final EmployeeRepository empRepo;
+    private final DepartmentRepository deptRepo;
+
+    public EmployeeServiceImpl(EmployeeRepository empRepo, DepartmentRepository deptRepo) {
+        this.empRepo = empRepo;
+        this.deptRepo = deptRepo;
+    }
+
+    private EmployeeResponse toResp(Employee e) {
+        EmployeeResponse r = new EmployeeResponse();
+        r.id = e.getId();
+        r.firstName = e.getFirstName();
+        r.lastName = e.getLastName();
+        r.email = e.getEmail();
+        r.title = e.getTitle();
+        r.salary = e.getSalary();
+        r.hireDate = e.getHireDate();
+        r.managerId = e.getManager() != null ? e.getManager().getId() : null;
+        r.departmentId = e.getDepartment() != null ? e.getDepartment().getId() : null;
+        return r;
+    }
+
+    @Override
+    public EmployeeResponse create(EmployeeRequest req) {
+        Department dept = deptRepo.findById(req.departmentId)
+            .orElseThrow(() -> new ResourceNotFoundException("Department not found"));
+        Employee e = new Employee();
+        e.setFirstName(req.firstName);
+        e.setLastName(req.lastName);
+        e.setEmail(req.email);
+        e.setTitle(req.title);
+        e.setSalary(req.salary);
+        e.setHireDate(req.hireDate);
+        e.setDepartment(dept);
+        if (req.managerId != null) {
+            Employee m = empRepo.findById(req.managerId).orElseThrow(() -> new ResourceNotFoundException("Manager not found"));
+            e.setManager(m);
+        }
+        Employee saved = empRepo.save(e);
+        return toResp(saved);
+    }
+
+    @Override
+    public EmployeeResponse update(Long id, EmployeeRequest req) {
+        Employee e = empRepo.findById(id).orElseThrow(() -> new ResourceNotFoundException("Employee not found"));
+        if (req.firstName != null) e.setFirstName(req.firstName);
+        if (req.lastName != null) e.setLastName(req.lastName);
+        if (req.email != null) e.setEmail(req.email);
+        if (req.title != null) e.setTitle(req.title);
+        if (req.salary != null) e.setSalary(req.salary);
+        if (req.hireDate != null) e.setHireDate(req.hireDate);
+        if (req.departmentId != null) {
+            Department d = deptRepo.findById(req.departmentId).orElseThrow(() -> new ResourceNotFoundException("Department not found"));
+            e.setDepartment(d);
+        }
+        if (req.managerId != null) {
+            Employee m = empRepo.findById(req.managerId).orElseThrow(() -> new ResourceNotFoundException("Manager not found"));
+            e.setManager(m);
+        } else if (req.managerId == null) {
+            e.setManager(null);
+        }
+        return toResp(empRepo.save(e));
+    }
+
+    @Override
+    public EmployeeResponse getById(Long id) {
+        Employee e = empRepo.findById(id).orElseThrow(() -> new ResourceNotFoundException("Employee not found"));
+        return toResp(e);
+    }
+
+    @Override
+    public void delete(Long id) {
+        Employee e = empRepo.findById(id).orElseThrow(() -> new ResourceNotFoundException("Employee not found"));
+        // set subordinates' manager to null before deletion to avoid FK issues
+        List<Employee> subs = empRepo.findByManagerId(e.getId());
+        subs.forEach(s -> s.setManager(null));
+        empRepo.saveAll(subs);
+        empRepo.delete(e);
+    }
+
+    @Override
+    public List<EmployeeResponse> listByDepartment(Long departmentId) {
+        return empRepo.findByDepartmentId(departmentId).stream().map(this::toResp).collect(Collectors.toList());
+    }
+
+    @Override
+    public List<EmployeeResponse> getReportingChain(Long employeeId) {
+        List<EmployeeResponse> chain = new ArrayList<>();
+        Employee current = empRepo.findById(employeeId).orElseThrow(() -> new ResourceNotFoundException("Employee not found"));
+        Set<Long> seen = new HashSet<>();
+        while (current.getManager() != null) {
+            Employee m = current.getManager();
+            if (seen.contains(m.getId())) break; // loop protection
+            chain.add(toResp(m));
+            seen.add(m.getId());
+            current = m;
+        }
+        return chain;
+    }
+
+    @Override
+    public Map<String,Object> departmentAnalytics(Long departmentId) {
+        List<Employee> emps = empRepo.findByDepartmentId(departmentId);
+        Map<String,Object> out = new HashMap<>();
+        out.put("employeeCount", emps.size());
+        BigDecimal avg = emps.stream()
+                .filter(e -> e.getSalary() != null)
+                .map(Employee::getSalary)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (emps.size() > 0) {
+            long countWithSalary = emps.stream().filter(e -> e.getSalary() != null).count();
+            if (countWithSalary > 0) out.put("averageSalary", avg.divide(BigDecimal.valueOf(countWithSalary), BigDecimal.ROUND_HALF_UP));
+            else out.put("averageSalary", null);
+        } else {
+            out.put("averageSalary", null);
+        }
+        // example: headcount by title
+        Map<String, Long> byTitle = new HashMap<>();
+        emps.forEach(e -> {
+            String t = e.getTitle() != null ? e.getTitle() : "Unknown";
+            byTitle.put(t, byTitle.getOrDefault(t,0L) + 1);
+        });
+        out.put("headcountByTitle", byTitle);
+        return out;
+    }
+}
+
+Brief: DepartmentService interface.
+
+// src/main/java/com/retailcloud/employee/service/DepartmentService.java
+package com.retailcloud.employee.service;
+
+import com.retailcloud.employee.dto.DepartmentRequest;
+import com.retailcloud.employee.dto.DepartmentResponse;
+
+public interface DepartmentService {
+    DepartmentResponse create(DepartmentRequest req);
+    DepartmentResponse update(Long id, DepartmentRequest req);
+    DepartmentResponse getById(Long id);
+    void delete(Long id);
+}
+
+Brief: DepartmentServiceImpl implementation.
+
+// src/main/java/com/retailcloud/employee/service/impl/DepartmentServiceImpl.java
+package com.retailcloud.employee.service.impl;
+
+import com.retailcloud.employee.dto.*;
+import com.retailcloud.employee.entity.Department;
+import com.retailcloud.employee.repository.DepartmentRepository;
+import com.retailcloud.employee.service.DepartmentService;
+import com.retailcloud.employee.exception.ResourceNotFoundException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+@Transactional
+public class DepartmentServiceImpl implements DepartmentService {
+    private final DepartmentRepository repo;
+    public DepartmentServiceImpl(DepartmentRepository repo) { this.repo = repo; }
+
+    @Override
+    public DepartmentResponse create(DepartmentRequest req) {
+        Department d = new Department(req.name, req.description);
+        Department saved = repo.save(d);
+        return toResp(saved);
+    }
+
+    @Override
+    public DepartmentResponse update(Long id, DepartmentRequest req) {
+        Department d = repo.findById(id).orElseThrow(() -> new ResourceNotFoundException("Department not found"));
+        if (req.name != null) d.setName(req.name);
+        if (req.description != null) d.setDescription(req.description);
+        return toResp(repo.save(d));
+    }
+
+    @Override
+    public DepartmentResponse getById(Long id) {
+        Department d = repo.findById(id).orElseThrow(() -> new ResourceNotFoundException("Department not found"));
+        return toResp(d);
+    }
+
+    @Override
+    public void delete(Long id) {
+        Department d = repo.findById(id).orElseThrow(() -> new ResourceNotFoundException("Department not found"));
+        if (d.getEmployees() != null && !d.getEmployees().isEmpty()) {
+            throw new IllegalStateException("Department has employees; cannot delete");
+        }
+        repo.delete(d);
+    }
+
+    private DepartmentResponse toResp(Department d) {
+        DepartmentResponse r = new DepartmentResponse();
+        r.id = d.getId();
+        r.name = d.getName();
+        r.description = d.getDescription();
+        r.employeeCount = d.getEmployees() != null ? d.getEmployees().size() : 0;
+        return r;
+    }
+}
+
+
+7) Controllers
+
+Brief: EmployeeController (CRUD + reporting chain + analytics).
+
+// src/main/java/com/retailcloud/employee/controller/EmployeeController.java
+package com.retailcloud.employee.controller;
+
+import com.retailcloud.employee.dto.*;
+import com.retailcloud.employee.service.EmployeeService;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import java.util.List;
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/employees")
+public class EmployeeController {
+    private final EmployeeService svc;
+    public EmployeeController(EmployeeService svc) { this.svc = svc; }
+
+    @PostMapping
+    public ResponseEntity<EmployeeResponse> create(@RequestBody EmployeeRequest req) {
+        return ResponseEntity.ok(svc.create(req));
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<EmployeeResponse> get(@PathVariable Long id) {
+        return ResponseEntity.ok(svc.getById(id));
+    }
+
+    @PatchMapping("/{id}")
+    public ResponseEntity<EmployeeResponse> update(@PathVariable Long id, @RequestBody EmployeeRequest req) {
+        return ResponseEntity.ok(svc.update(id, req));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        svc.delete(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/department/{departmentId}")
+    public ResponseEntity<List<EmployeeResponse>> listByDept(@PathVariable Long departmentId) {
+        return ResponseEntity.ok(svc.listByDepartment(departmentId));
+    }
+
+    @GetMapping("/{id}/reporting-chain")
+    public ResponseEntity<List<EmployeeResponse>> reportingChain(@PathVariable Long id) {
+        return ResponseEntity.ok(svc.getReportingChain(id));
+    }
+
+    @GetMapping("/department/{departmentId}/analytics")
+    public ResponseEntity<Map<String,Object>> deptAnalytics(@PathVariable Long departmentId) {
+        return ResponseEntity.ok(svc.departmentAnalytics(departmentId));
+    }
+}
+
+Brief: DepartmentController
+
+// src/main/java/com/retailcloud/employee/controller/DepartmentController.java
+package com.retailcloud.employee.controller;
+
+import com.retailcloud.employee.dto.*;
+import com.retailcloud.employee.service.DepartmentService;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api/departments")
+public class DepartmentController {
+    private final DepartmentService svc;
+    public DepartmentController(DepartmentService svc) { this.svc = svc; }
+
+    @PostMapping
+    public ResponseEntity<DepartmentResponse> create(@RequestBody DepartmentRequest req) {
+        return ResponseEntity.ok(svc.create(req));
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<DepartmentResponse> get(@PathVariable Long id) {
+        return ResponseEntity.ok(svc.getById(id));
+    }
+
+    @PatchMapping("/{id}")
+    public ResponseEntity<DepartmentResponse> update(@PathVariable Long id, @RequestBody DepartmentRequest req) {
+        return ResponseEntity.ok(svc.update(id, req));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        svc.delete(id);
+        return ResponseEntity.noContent().build();
+    }
+}
+
+8) Exception handling
+
+Brief: ResourceNotFoundException.
+
+// src/main/java/com/retailcloud/employee/exception/ResourceNotFoundException.java
+package com.retailcloud.employee.exception;
+
+public class ResourceNotFoundException extends RuntimeException {
+    public ResourceNotFoundException(String message) { super(message); }
+}
+
+Brief: GlobalExceptionHandler.
+
+// src/main/java/com/retailcloud/employee/exception/GlobalExceptionHandler.java
+package com.retailcloud.employee.exception;
+
+import org.springframework.http.*;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.context.request.WebRequest;
+import java.util.Map;
+
+@ControllerAdvice
+public class GlobalExceptionHandler {
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<Object> handleNotFound(ResourceNotFoundException ex, WebRequest req) {
+        return new ResponseEntity<>(Map.of("error", ex.getMessage()), HttpStatus.NOT_FOUND);
+    }
+
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<Object> handleBadRequest(IllegalStateException ex) {
+        return new ResponseEntity<>(Map.of("error", ex.getMessage()), HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<Object> handleAll(Exception ex) {
+        return new ResponseEntity<>(Map.of("error", "internal_server_error"), HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+}
+
